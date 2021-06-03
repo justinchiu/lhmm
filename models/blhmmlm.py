@@ -158,8 +158,6 @@ class BLHmmLm(nn.Module):
         return self.start.unsqueeze(0).expand(bsz, self.C)
 
     def init_proj(self):
-        #if self.config.rff_method == "relu":
-            #return th.nn.init.xavier_uniform_(th.empty(self.config.hidden_dim, self.config.num_features)).to(self.device)
         if not self.anti:
             return get_2d_array(self.config.num_features, self.config.hidden_dim).t().to(self.device)
         else:
