@@ -1,0 +1,10 @@
+__pycache__
+.vector_cache
+.data
+wandb
+*.npy
+*.pth
+checkpoints/
+wandb_checkpoints/
+slurm*.out
+*.sub
