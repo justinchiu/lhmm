@@ -4,7 +4,7 @@
 * pytorch 1.6.0
 * wandb 0.10.30
 * torchtext 0.7.0
-* genbmm
+* genbmm (for the banded model)
 
 # Experiments @ 16k states
 * HMM Baseline

@@ -233,4 +233,13 @@ if __name__ == "__main__":
         bsz,
     )
 
-    import pdb; pdb.set_trace()
+    # get dataset lengths
+    for data in [nott_data, piano_data, muse_data, jsb_data]:
+        for split in ["train", "valid", "test"]:
+            print(split)
+            lengths = data[split]["sequence_lengths"]
+            # total number of frames
+            print(f"total number of frames: {lengths.sum().item():,}")
+            # avg length
+            print(f"avg length: {lengths.float().mean().item()}")
+
