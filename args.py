@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-import torch_struct as ts
 
 def get_args():
     parser = ArgumentParser()

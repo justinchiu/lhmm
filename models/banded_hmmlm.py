@@ -6,15 +6,11 @@ import torch.nn as nn
 
 from torch.utils.checkpoint import checkpoint
 
-import torch_struct as ts
-
-from genbmm import logbmm
-
 from .misc import ResLayer, LogDropoutM
 
 from utils import Pack
 
-from genbmm import BandedMatrix
+from genbmm import BandedMatrix, logbmm
 
 from .linear_utils import get_2d_array, project_logits, logbbmv, bbmv
 
@@ -146,20 +142,12 @@ class BandedHmmLm(nn.Module):
         if self.band_method == "sum":
             # HACKY
             with th.no_grad():
-                #fx = self.state_emb.to(self.device) @ self.projection
-                #fy = self.next_state_emb.to(self.device) @ self.projection
-                #logits = logbmm(fx[None], fy.T.contiguous()[None])[0]
-                #meanscore = logits.max() * 1.5
-                #print("meanscore", meanscore.item())
-                #self.col_banded_transition.data += meanscore.to(self.col_banded_transition.device)
                 self.col_banded_transition.data += 30
 
     def init_state(self, bsz):
         return self.start.unsqueeze(0).expand(bsz, self.C)
 
     def init_proj(self):
-        #if self.config.rff_method == "relu":
-            #return th.nn.init.xavier_uniform_(th.empty(self.config.hidden_dim, self.config.num_features)).to(self.device)
         if not self.anti:
             return get_2d_array(self.config.num_features, self.config.hidden_dim).t().to(self.device)
         else:
@@ -196,7 +184,7 @@ class BandedHmmLm(nn.Module):
     def start(self, mask=None, feat_mask=None):
         keep_mask = ~mask if mask is not None else None
         keep_feat_mask = ~feat_mask if feat_mask is not None else None
-        #return self.start_mlp(self.start_emb).log_softmax(-1)
+
         fx = self.start_mlp(self.start_emb)
         fy = self.next_state_emb if self.tie_start else self.next_start_emb
 
@@ -244,15 +232,6 @@ class BandedHmmLm(nn.Module):
             # important to renormalize. maybe move this into project_logits
             if self.learn_temp == "mul":
                 projection = projection * self.temp
-            """
-            logits = project_logits(
-                fx[None],
-                fy[None],
-                projection,
-                rff_method = self.config.rff_method,
-                fast = False, # save memory by using genbmm.logbmm
-            )[0]
-            """
             logits = logbmm((fx @ projection)[None], (fy @ projection).T.contiguous()[None])[0]
         else:
             raise ValueError(f"Invalid parameterization: {self.parameterization}")
@@ -377,7 +356,6 @@ class BandedHmmLm(nn.Module):
             evidences_bmm.append(Ot)
         O = th.cat(evidences_bmm, -1)
         evidence = O[mask].sum(-1)
-        #import pdb; pdb.set_trace()
         return Pack(
             elbo = None,
             evidence = evidence,
@@ -443,8 +421,6 @@ class BandedHmmLm(nn.Module):
         else:
             raise ValueError(f"Unsupported dropout type {self.dropout_type}")
 
-        #transition_logits = self.transition_logits()
-        #transition = self.mask_transition(transition_logits, transition_mask)
         transition = self.transition(transition_mask, feat_mask).exp()
         emission = self.emission(transition_mask)
 

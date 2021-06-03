@@ -13,8 +13,6 @@ import numpy as np
 import torch as th
 from torch.nn.utils.clip_grad import clip_grad_norm_
 
-import torch_struct as ts
-
 from torch.optim import AdamW, SGD
 from torch.optim.lr_scheduler import ReduceLROnPlateau, LambdaLR
 

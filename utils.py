@@ -7,9 +7,6 @@ import yaml
 import numpy as np
 import torch as th
 
-import matplotlib.pyplot as plt
-
-
 class Pack(dict):
     def __getattr__(self, name):
         return self[name]
@@ -185,6 +182,7 @@ def log_eye(K, dtype, device):
     return x
 
 def plot_counts(counts):
+    import matplotlib.pyplot as plt
     num_c, num_w = counts.shape
     words = [
         13, 29, 67, 111, 131, 171, 373, 567, 700, 800,

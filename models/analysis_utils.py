@@ -1,7 +1,5 @@
 
 import torch as th
-import torch_struct as ts
-
 #from hmm_runners.hmm import get_fb
 
 def construct_string(xs):
