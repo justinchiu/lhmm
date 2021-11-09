@@ -240,7 +240,6 @@ class BLHmmLm(nn.Module):
             logits = fx @ fy.T
             if self.learn_temp == "mul":
                 logits = logits * self.temp
-            #logits = logits.masked_fill(logits != logits, float("-inf"))
             return logits.log_softmax(-1)
         elif self.parameterization == "smp" and not self.sm_trans:
             projection = self.projection if keep_feat_mask is None else self.projection[:,keep_feat_mask]
@@ -269,7 +268,6 @@ class BLHmmLm(nn.Module):
 
             mask = th.zeros(self.C, len(self.V), device=self.device, dtype=th.bool)
             mask = ~mask.scatter(1, indices, 1)
-            #masked_logits = logits.masked_fill(mask, float("-inf"))
             masked_logits = logits.masked_fill(mask, -1e5)
             return masked_logits.log_softmax(-1)
         if self.config.emission_sparsemax:
@@ -361,7 +359,6 @@ class BLHmmLm(nn.Module):
         evidences_bmm.append(Ot)
         for t in range(T-1):
             # logbmm
-            #alpha = (alpha[:,:,None] + transition[None] + p_emit[:,t+1,None,:]).logsumexp(-2)
             alpha_un = (alpha @ transition).log() + p_emit[:,t+1]
             Ot = alpha_un.logsumexp(-1, keepdim=True)
             alpha = (alpha_un - Ot).exp()
@@ -369,7 +366,6 @@ class BLHmmLm(nn.Module):
             evidences_bmm.append(Ot)
         O = th.cat(evidences_bmm, -1)
         evidence = O[mask].sum(-1)
-        #import pdb; pdb.set_trace()
         return Pack(
             elbo = None,
             evidence = evidence,
@@ -384,44 +380,6 @@ class BLHmmLm(nn.Module):
         if not self.training or self.dropout_type == "none" or self.dropout_type is None:
             # no dropout
             pass
-        elif self.dropout_type == "transition":
-            raise NotImplementedError
-            transition_mask = (th.empty(self.C, self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_()
-                .bool()
-            )
-        elif self.dropout_type == "starttransition":
-            raise NotImplementedError
-            transition_mask = (th.empty(self.C, self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_()
-                .bool()
-            )
-            start_mask = (th.empty(self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_()
-                .bool()
-            )
-        elif self.dropout_type == "column":
-            raise NotImplementedError
-            transition_mask = (th.empty(self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_()
-                .bool()
-            )
-        elif self.dropout_type == "startcolumn":
-            raise NotImplementedError
-            transition_mask = (th.empty(self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_()
-                .bool()
-            )
-            start_mask = (th.empty(self.C, device=self.device)
-                .fill_(self.transition_dropout)
-                .bernoulli_(self.transition_dropout)
-                .bool()
-            )
         elif self.dropout_type == "state":
             m = (th.empty(self.C, device=self.device)
                 .bernoulli_(self.transition_dropout)
@@ -435,8 +393,6 @@ class BLHmmLm(nn.Module):
         else:
             raise ValueError(f"Unsupported dropout type {self.dropout_type}")
 
-        #transition_logits = self.transition_logits()
-        #transition = self.mask_transition(transition_logits, transition_mask)
         log_transition = self.transition(transition_mask, feat_mask)
         transition = log_transition.exp()
         if not self.config.emission_dropout:
@@ -471,7 +427,6 @@ class BLHmmLm(nn.Module):
         evidences_bmm.append(Ot)
         for t in range(T-1):
             # logbmm
-            #alpha = (alpha[:,:,None] + transition[None] + p_emit[:,t+1,None,:]).logsumexp(-2)
             alpha_un = (alpha @ transition).log() + p_emit[:,t+1]
             Ot = alpha_un.logsumexp(-1, keepdim=True)
             alpha = (alpha_un - Ot).exp()
@@ -481,17 +436,14 @@ class BLHmmLm(nn.Module):
         evidence = O[mask].sum(-1)
 
         self.i += 1
-        #print(self.i)
 
         loss = evidence
-        #import pdb; pdb.set_trace()
         if self.regularize_eigenvalue == "sum":
             loss = loss + transition.trace()
         elif self.regularize_eigenvalue == "prod":
             loss = loss + log_transition.trace()
         elif self.regularize_eigenvalue != "none":
             # actually compute spectrum
-            #_,s,_ = transition.svd(compute_uv=False)
             _,s,_ = transition.svd()
             if self.regularize_eigenvalue == "min":
                 loss = loss + s[-1]
@@ -510,12 +462,8 @@ class BLHmmLm(nn.Module):
             pairwise_kl = (transition[kl_states,None] * (
                 log_transition[kl_states,None] - log_transition[None,kl_states]
             )).sum(-1).mean()
-            #if self.i == 37:
-                #import pdb; pdb.set_trace()
-            #loss = loss + 0.1 * pairwise_kl
             loss = loss + pairwise_kl
 
-        # may-6 experiments: regularize transition distribution
         if self.config.regularize_transition_entropy:
             H = -(transition * log_transition).sum(-1)
             loss = loss + self.config.regularize_transition_entropy * H.mean()
@@ -588,9 +536,6 @@ class BLHmmLm(nn.Module):
             projection = projection * self.temp
         log_phi_w = (state_emb @ projection)
         log_phi_u = next_state_emb @ projection
-        # TODO: performer kernel, abstract away
-        #log_phi_w = state_emb @ projection - state_emb.square().sum(-1, keepdim=True) / 2
-        #log_phi_u = next_state_emb @ projection - next_state_emb.square().sum(-1, keepdim=True) / 2
 
         # O(CD)
         log_denominator = (log_phi_w + log_phi_u.logsumexp(0, keepdim=True)).logsumexp(-1)
@@ -602,7 +547,6 @@ class BLHmmLm(nn.Module):
 
         alphas = []
         Os = []
-        #alpha = start * p_emit[:,0] # {N} x C
         alpha_un = start + logp_emit[:,0]
         Ot = alpha_un.logsumexp(-1, keepdim=True)
         alpha = (alpha_un - Ot).exp()
@@ -618,7 +562,6 @@ class BLHmmLm(nn.Module):
             Os.append(Ot)
         O = th.cat(Os, -1)
         evidence = O[mask].sum()
-        #import pdb; pdb.set_trace()
 
         return Pack(
             elbo = None,
@@ -642,10 +585,6 @@ class BLHmmLm(nn.Module):
             projection = projection * self.temp
         log_phi_w = state_emb @ projection
         log_phi_u = next_state_emb @ projection
-
-        # TODO: performer kernel, abstract away
-        #log_phi_w = state_emb @ projection - state_emb.square().sum(-1, keepdim=True) / 2
-        #log_phi_u = next_state_emb @ projection - next_state_emb.square().sum(-1, keepdim=True) / 2
 
         log_denominator = (log_phi_w + log_phi_u.logsumexp(0, keepdim=True)).logsumexp(-1)
         normed_log_phi_w = log_phi_w - log_denominator[:, None]
@@ -672,7 +611,6 @@ class BLHmmLm(nn.Module):
         ]
         alphas = []
         Os = []
-        #alpha = start * p_emit[:,0] # {N} x C
         alpha_un = start + p_emit[:,0]
         Ot = alpha_un.logsumexp(-1, keepdim=True)
         alpha = (alpha_un - Ot).exp()
@@ -686,7 +624,6 @@ class BLHmmLm(nn.Module):
 
             alphas.append(alpha)
             Os.append(Ot)
-            #import pdb; pdb.set_trace()
         O = th.cat(Os, -1)
         evidence = O[mask].sum()
         return Pack(
